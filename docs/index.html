@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Single User Dungeon</title>
+  <style>
+:root {
+  --font: monospace;
+  --black: #000;
+  --darkgrey: #444;
+  --midgrey: #888;
+  --lightgrey: #ccc;
+  --white: #fff;
+}
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--black);
+  font-family: var(--font);
+}
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+main {
+  flex: 1;
+  color: var(--lightgrey);
+  overflow-y: scroll;
+  display: flex;
+  flex-direction: column;
+  row-gap: 1em;
+}
+input {
+  border-color: var(--lightgrey);
+  background: var(--black);
+  color: var(--lightgrey);
+  font-family: var(--font);
+}
+  </style>
+</head>
+<body>
+<main id="display"></main>
+<input id="input" type="text" autofocus autocomplete="off">
+<script src="bundle.js"></script>
+</body>
+</html>
