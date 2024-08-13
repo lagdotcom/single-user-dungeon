@@ -14,8 +14,8 @@ import World from "../types/World";
 import alias from "./alias";
 import CommandHandler from "./CommandHandler";
 import { go, look, unknown } from "./exploration";
-import { toggleBuilder } from "./old/common";
-import { roomEditor } from "./old/room";
+import { toggleBuilder } from "./olc/common";
+import { roomEditor } from "./olc/room";
 import UI from "./UI";
 
 export type InputHandler = (input: string, e: Engine) => void;

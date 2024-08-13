@@ -112,7 +112,7 @@
     }
   };
 
-  // src/lib/old/common.ts
+  // src/lib/olc/common.ts
   var toggleBuilder = {
     name: "##builder",
     execute(g) {
@@ -127,7 +127,7 @@
     }
   };
 
-  // src/lib/old/utils.ts
+  // src/lib/olc/utils.ts
   function makeRoom(g, roomID) {
     const existing = g.world.rooms.get(roomID);
     if (existing) {
@@ -168,7 +168,7 @@
     }
   };
 
-  // src/lib/old/room.ts
+  // src/lib/olc/room.ts
   var makeRoomExit = {
     name: "rexit",
     execute(g, dir, type, newID) {
