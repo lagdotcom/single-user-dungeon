@@ -1,18 +1,28 @@
 import Engine from "../types/Engine";
-import { MobID, MobTemplateID, RoomID } from "../types/flavours";
+import {
+  ItemID,
+  ItemTemplateID,
+  MobID,
+  MobTemplateID,
+  RoomID,
+} from "../types/flavours";
+import Item from "../types/Item";
+import ItemTemplate from "../types/ItemTemplate";
 import Mob from "../types/Mob";
 import MobTemplate from "../types/MobTemplate";
 import World from "../types/World";
+import alias from "./alias";
 import CommandHandler from "./CommandHandler";
-import { look, unknownCommand } from "./exploration";
-import { toggleBuilder } from "./olc";
+import { go, look, unknown } from "./exploration";
+import { toggleBuilder } from "./old/common";
+import { roomEditor } from "./old/room";
 import UI from "./UI";
 
 export type InputHandler = (input: string, e: Engine) => void;
 
 export default class SUDEngine implements Engine {
   player: Mob;
-  inputHandler: InputHandler;
+  inputStack: InputHandler[];
 
   constructor(
     public world: World,
@@ -31,7 +41,19 @@ export default class SUDEngine implements Engine {
       room: NaN,
     };
 
-    this.inputHandler = this.motd();
+    this.inputStack = [this.motd()];
+  }
+
+  get inputHandler() {
+    return this.inputStack[this.inputStack.length - 1];
+  }
+
+  pushInputHandler(handler: InputHandler) {
+    this.inputStack.push(handler);
+  }
+
+  popInputHandler() {
+    return this.inputStack.pop();
   }
 
   mob(id: MobID) {
@@ -51,6 +73,25 @@ export default class SUDEngine implements Engine {
   mobAndTemplate(id: MobID): [Mob, MobTemplate] {
     const mob = this.mob(id);
     return [mob, this.mobTemplate(mob.template)];
+  }
+
+  item(id: ItemID): Item {
+    const item = this.world.items.get(id);
+    if (!item) throw new Error(`Invalid item ID: ${id}`);
+
+    return item;
+  }
+
+  itemTemplate(id: ItemTemplateID) {
+    const it = this.world.itemTemplates.get(id);
+    if (!it) throw new Error(`Invalid item template ID: ${id}`);
+
+    return it;
+  }
+
+  itemAndTemplate(id: ItemID): [Item, ItemTemplate] {
+    const item = this.item(id);
+    return [item, this.itemTemplate(item.template)];
   }
 
   room(id: RoomID) {
@@ -81,6 +122,7 @@ export default class SUDEngine implements Engine {
     newRoom.mobs.add(mobID);
 
     mob.room = roomID;
+    look.execute(this);
   }
 
   act(selfID: MobID, message: string, overrideRoomID?: RoomID) {
@@ -96,8 +138,9 @@ export default class SUDEngine implements Engine {
       const n = isSelf ? "you" : (self.name ?? st.short);
       const s = isSelf ? "" : "s";
       const t = mob.name ?? mt.short;
+      const e = isSelf ? "" : "es";
 
-      const formatted = this.format(message, { n, s, t });
+      const formatted = this.format(message, { n, s, t, e });
 
       if (mob.tags.has("player")) this.ui.text(formatted);
       // TODO else allow scripts to react
@@ -135,18 +178,33 @@ export default class SUDEngine implements Engine {
       ui.text(`Good to meet you, ${player.name}.`);
 
       world.mobs.set(player.id, player);
-      this.moveMob(player.id, startingRoomID, "$n log$s in");
 
-      this.inputHandler = mainCommandHandler.handleInput;
-      look(this);
+      this.popInputHandler();
+      this.pushInputHandler(mainCommandHandler.handleInput);
+
+      this.moveMob(player.id, startingRoomID, "$n log$s in");
     };
+  }
+
+  interpret(...args: string[]): void {
+    this.inputHandler(args.join(" "), this);
   }
 }
 
-const mainCommandHandler = new CommandHandler(
-  { name: "[unknown]", execute: unknownCommand },
-  [
-    { name: "look", execute: look },
-    { name: "##builder", execute: toggleBuilder },
-  ],
-);
+const mainCommandHandler = new CommandHandler(unknown, [
+  toggleBuilder,
+  roomEditor,
+
+  look,
+  alias("l", look.name),
+
+  go,
+  alias("n", go.name, "north"),
+  alias("north", go.name, "north"),
+  alias("e", go.name, "east"),
+  alias("east", go.name, "east"),
+  alias("s", go.name, "south"),
+  alias("south", go.name, "south"),
+  alias("w", go.name, "west"),
+  alias("west", go.name, "west"),
+]);
