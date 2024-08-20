@@ -1,7 +1,7 @@
 import { RoomID } from "../../types/flavours";
 import alias from "../alias";
 import CommandHandler, { Command } from "../CommandHandler";
-import { go, unknown } from "../exploration";
+import { go, look, unknown } from "../exploration";
 import { doneEditing, makeLinkedExits, makeRoom } from "./utils";
 
 const makeRoomExit: Command = {
@@ -74,6 +74,19 @@ const makeRoomExit: Command = {
   },
 };
 
+const nameRoom: Command = {
+  name: "name",
+  doNotParse: true,
+  execute(g, ...args: string[]) {
+    const name = args.join(" ").trim();
+    if (!name) return g.ui.text("Syntax: name <new room name>");
+
+    const room = g.room(g.player.room);
+    room.name = name;
+    return look.execute(g);
+  },
+};
+
 const create: Command = {
   name: "create",
   execute(g, id?: string) {
@@ -101,6 +114,8 @@ export const roomEditMode = new CommandHandler(unknown, [
   alias("south", makeRoomExit.name, "south"),
   alias("w", makeRoomExit.name, "west"),
   alias("west", makeRoomExit.name, "west"),
+
+  nameRoom,
 ]);
 
 export const roomEditor: Command = {

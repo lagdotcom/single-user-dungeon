@@ -20,6 +20,12 @@ import UI from "./UI";
 
 export type InputHandler = (input: string, e: Engine) => void;
 
+const MOTDBanner = `---------------
+Welcome to SUD!
+---------------
+
+Type your name:`;
+
 export default class SUDEngine implements Engine {
   player: Mob;
   inputStack: InputHandler[];
@@ -30,7 +36,11 @@ export default class SUDEngine implements Engine {
     public playerTemplateID: MobTemplateID,
     public startingRoomID: RoomID,
   ) {
-    ui.addInputListener((input) => this.inputHandler(input, this));
+    ui.addInputListener((input) => {
+      this.ui.beginOutput();
+      this.inputHandler(input, this);
+      this.ui.endOutput();
+    });
 
     this.player = {
       id: 1,
@@ -160,11 +170,7 @@ export default class SUDEngine implements Engine {
   }
 
   motd(): InputHandler {
-    this.ui.text(`---------------
-      Welcome to SUD!
-      ---------------
-
-      Type your name:`);
+    this.ui.text(MOTDBanner);
 
     return (value: string) => {
       const { player, startingRoomID, ui, world } = this;

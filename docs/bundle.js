@@ -53,7 +53,11 @@
         if (parts.length > 0) {
           const [first, ...rest] = parts;
           const cmd = this.commands.get(first.toLocaleLowerCase());
-          if (cmd) return cmd.execute(g, ...rest);
+          if (cmd) {
+            if (cmd.doNotParse)
+              return cmd.execute(g, value.slice(cmd.name.length + 1));
+            else return cmd.execute(g, ...rest);
+          }
         }
         return this.unhandled.execute(g, ...parts);
       });
@@ -223,6 +227,17 @@
       }
     }
   };
+  var nameRoom = {
+    name: "name",
+    doNotParse: true,
+    execute(g, ...args) {
+      const name = args.join(" ").trim();
+      if (!name) return g.ui.text("Syntax: name <new room name>");
+      const room = g.room(g.player.room);
+      room.name = name;
+      return look.execute(g);
+    }
+  };
   var create = {
     name: "create",
     execute(g, id) {
@@ -244,7 +259,8 @@
     alias("s", makeRoomExit.name, "south"),
     alias("south", makeRoomExit.name, "south"),
     alias("w", makeRoomExit.name, "west"),
-    alias("west", makeRoomExit.name, "west")
+    alias("west", makeRoomExit.name, "west"),
+    nameRoom
   ]);
   var roomEditor = {
     name: "redit",
@@ -269,6 +285,11 @@
   };
 
   // src/lib/SUDEngine.ts
+  var MOTDBanner = `---------------
+Welcome to SUD!
+---------------
+
+Type your name:`;
   var SUDEngine = class {
     constructor(world, ui, playerTemplateID, startingRoomID) {
       this.world = world;
@@ -277,7 +298,11 @@
       this.startingRoomID = startingRoomID;
       __publicField(this, "player");
       __publicField(this, "inputStack");
-      ui.addInputListener((input) => this.inputHandler(input, this));
+      ui.addInputListener((input) => {
+        this.ui.beginOutput();
+        this.inputHandler(input, this);
+        this.ui.endOutput();
+      });
       this.player = {
         id: 1,
         template: playerTemplateID,
@@ -372,11 +397,7 @@
       return message;
     }
     motd() {
-      this.ui.text(`---------------
-      Welcome to SUD!
-      ---------------
-
-      Type your name:`);
+      this.ui.text(MOTDBanner);
       return (value) => {
         const { player, startingRoomID, ui, world } = this;
         if (value.length < 2) {
@@ -416,8 +437,12 @@
     constructor(display, input) {
       this.display = display;
       this.input = input;
+      __publicField(this, "element");
       __publicField(this, "inputListeners");
+      __publicField(this, "scrolling");
       this.inputListeners = /* @__PURE__ */ new Set();
+      this.element = display;
+      this.scrolling = 0;
       this.input.addEventListener("keypress", (e) => {
         if (e.key === "Enter") this.onInputLine();
       });
@@ -431,17 +456,17 @@
       return new _UI(display, input);
     }
     text(s) {
-      const div = document.createElement("div");
-      div.innerText = s;
-      this.display.appendChild(div);
-      setTimeout(() => {
-        this.display.scrollTop = this.display.scrollHeight;
-      }, 0);
+      this.element.innerText += s + "\n";
+    }
+    textBlock(s) {
+      this.beginOutput();
+      this.text(s);
+      this.endOutput();
     }
     onInputLine() {
       const value = this.input.value;
       this.input.value = "";
-      this.text("> " + value + "\n");
+      this.textBlock("> " + value);
       for (const listener of this.inputListeners) listener(value);
     }
     addInputListener(listener) {
@@ -449,6 +474,17 @@
     }
     removeInputListener(listener) {
       return this.inputListeners.delete(listener);
+    }
+    beginOutput() {
+      this.element = document.createElement("div");
+      this.display.appendChild(this.element);
+    }
+    endOutput() {
+      if (!this.scrolling)
+        this.scrolling = setTimeout(() => {
+          this.display.scrollTop = this.display.scrollHeight;
+          this.scrolling = 0;
+        }, 0);
     }
   };
 

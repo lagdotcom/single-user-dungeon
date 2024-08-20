@@ -1,13 +1,17 @@
 export type InputListener = (input: string) => void;
 
 export default class UI {
+  element: HTMLElement;
   inputListeners: Set<InputListener>;
+  scrolling: number;
 
   constructor(
     public display: HTMLElement,
     public input: HTMLInputElement,
   ) {
     this.inputListeners = new Set();
+    this.element = display;
+    this.scrolling = 0;
 
     this.input.addEventListener("keypress", (e) => {
       if (e.key === "Enter") this.onInputLine();
@@ -26,20 +30,19 @@ export default class UI {
   }
 
   text(s: string) {
-    const div = document.createElement("div");
-    div.innerText = s;
+    this.element.innerText += s + "\n";
+  }
 
-    this.display.appendChild(div);
-    setTimeout(() => {
-      this.display.scrollTop = this.display.scrollHeight;
-    }, 0);
+  textBlock(s: string) {
+    this.beginOutput();
+    this.text(s);
+    this.endOutput();
   }
 
   onInputLine() {
     const value = this.input.value;
     this.input.value = "";
-
-    this.text("> " + value + "\n");
+    this.textBlock("> " + value);
 
     for (const listener of this.inputListeners) listener(value);
   }
@@ -50,5 +53,18 @@ export default class UI {
 
   removeInputListener(listener: InputListener) {
     return this.inputListeners.delete(listener);
+  }
+
+  beginOutput() {
+    this.element = document.createElement("div");
+    this.display.appendChild(this.element);
+  }
+
+  endOutput() {
+    if (!this.scrolling)
+      this.scrolling = setTimeout(() => {
+        this.display.scrollTop = this.display.scrollHeight;
+        this.scrolling = 0;
+      }, 0);
   }
 }

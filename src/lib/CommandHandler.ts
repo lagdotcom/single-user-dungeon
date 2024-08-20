@@ -2,6 +2,7 @@ import Engine from "../types/Engine";
 
 export interface Command {
   name: string;
+  doNotParse?: boolean;
   execute(g: Engine, ...args: string[]): void;
 }
 
@@ -56,7 +57,11 @@ export default class CommandHandler {
       const [first, ...rest] = parts;
 
       const cmd = this.commands.get(first.toLocaleLowerCase());
-      if (cmd) return cmd.execute(g, ...rest);
+      if (cmd) {
+        if (cmd.doNotParse)
+          return cmd.execute(g, value.slice(cmd.name.length + 1));
+        else return cmd.execute(g, ...rest);
+      }
     }
 
     return this.unhandled.execute(g, ...parts);
