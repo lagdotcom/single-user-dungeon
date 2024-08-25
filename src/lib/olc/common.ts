@@ -1,3 +1,4 @@
+import { cSystem } from "../colours";
 import { Command } from "../CommandHandler";
 
 export const toggleBuilder: Command = {
@@ -7,10 +8,10 @@ export const toggleBuilder: Command = {
 
     if (player.tags.has("builder")) {
       player.tags.delete("builder");
-      g.ui.text("You are no longer a builder.");
+      g.ui.line("You are no longer a builder.", cSystem);
     } else {
       player.tags.add("builder");
-      g.ui.text("You are now a builder.");
+      g.ui.line("You are now a builder.", cSystem);
     }
   },
 };

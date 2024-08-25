@@ -1,5 +1,6 @@
 import Engine from "../types/Engine";
 import {
+  Colour,
   ItemID,
   ItemTemplateID,
   MobID,
@@ -12,6 +13,7 @@ import Mob from "../types/Mob";
 import MobTemplate from "../types/MobTemplate";
 import World from "../types/World";
 import alias from "./alias";
+import { cAction, cError, cSystem } from "./colours";
 import CommandHandler from "./CommandHandler";
 import { go, look, unknown } from "./exploration";
 import { toggleBuilder } from "./olc/common";
@@ -135,7 +137,12 @@ export default class SUDEngine implements Engine {
     look.execute(this);
   }
 
-  act(selfID: MobID, message: string, overrideRoomID?: RoomID) {
+  act(
+    selfID: MobID,
+    message: string,
+    overrideRoomID?: RoomID,
+    colour: Colour = cAction,
+  ) {
     const [self, st] = this.mobAndTemplate(selfID);
     const roomID = overrideRoomID ?? self.room;
     if (!roomID) return;
@@ -152,7 +159,7 @@ export default class SUDEngine implements Engine {
 
       const formatted = this.format(message, { n, s, t, e });
 
-      if (mob.tags.has("player")) this.ui.text(formatted);
+      if (mob.tags.has("player")) this.ui.line(formatted, colour);
       // TODO else allow scripts to react
     }
   }
@@ -170,18 +177,21 @@ export default class SUDEngine implements Engine {
   }
 
   motd(): InputHandler {
-    this.ui.text(MOTDBanner);
+    this.ui.line(MOTDBanner, cSystem);
 
     return (value: string) => {
       const { player, startingRoomID, ui, world } = this;
 
       if (value.length < 2) {
-        ui.text("Try something longer.");
+        ui.line("Try something longer.", cError);
         return;
       }
 
       player.name = value.trim();
-      ui.text(`Good to meet you, ${player.name}.`);
+      ui.line(
+        `Good to meet you, ${player.name}. You are now entering SUD... enjoy your stay!\n`,
+        cSystem,
+      );
 
       world.mobs.set(player.id, player);
 

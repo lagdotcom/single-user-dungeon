@@ -7,16 +7,19 @@
   <style>
 :root {
   --font: monospace;
-  --black: #000;
-  --darkgrey: #444;
-  --midgrey: #888;
-  --lightgrey: #ccc;
-  --white: #fff;
+  --console-bg: #000;
+  --console-default: #ccc;
+  --system: #fff;
+  --olc: #f8f;
+  --room-name: #ff0;
+  --room-description: #888;
+  --action: #888;
+  --error: #c88;
 }
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--black);
+  background: var(--console-bg);
   font-family: var(--font);
 }
 body {
@@ -26,7 +29,7 @@ body {
 }
 main {
   flex: 1;
-  color: var(--lightgrey);
+  color: var(--console-default);
   overflow-y: scroll;
   display: flex;
   flex-direction: column;
@@ -34,9 +37,9 @@ main {
   white-space-collapse: preserve;
 }
 input {
-  border-color: var(--lightgrey);
-  background: var(--black);
-  color: var(--lightgrey);
+  border-color: var(--console-default);
+  background: var(--console-bg);
+  color: var(--console-default);
   font-family: var(--font);
 }
   </style>

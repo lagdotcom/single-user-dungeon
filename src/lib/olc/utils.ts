@@ -1,12 +1,13 @@
 import Engine from "../../types/Engine";
 import { RoomID } from "../../types/flavours";
 import Room from "../../types/Room";
+import { cEditor, cError } from "../colours";
 import { Command } from "../CommandHandler";
 
 export function makeRoom(g: Engine, roomID: RoomID): Room | undefined {
   const existing = g.world.rooms.get(roomID);
   if (existing) {
-    g.ui.text("Room id already exists.");
+    g.ui.line("Room ID already exists.", cError);
     return;
   }
 
@@ -44,7 +45,7 @@ export function makeLinkedExits(dir: string, room: Room, other: Room) {
 export const doneEditing: Command = {
   name: "done",
   execute(g) {
-    g.ui.text("Exiting editing mode.");
+    g.ui.line("Exiting editing mode.", cEditor);
     g.popInputHandler();
   },
 };

@@ -57,13 +57,16 @@ export default class CommandHandler {
       const [first, ...rest] = parts;
 
       const cmd = this.commands.get(first.toLocaleLowerCase());
-      if (cmd) {
-        if (cmd.doNotParse)
-          return cmd.execute(g, value.slice(cmd.name.length + 1));
-        else return cmd.execute(g, ...rest);
-      }
+      if (cmd) return this.runCommand(g, cmd, value, rest);
     }
 
-    return this.unhandled.execute(g, ...parts);
+    return this.runCommand(g, this.unhandled, value, parts);
   };
+
+  runCommand(g: Engine, cmd: Command, value: string, parts: string[]) {
+    if (cmd.doNotParse) {
+      const line = cmd.name ? value.slice(cmd.name.length + 1) : value;
+      return cmd.execute(g, line);
+    } else return cmd.execute(g, ...parts);
+  }
 }

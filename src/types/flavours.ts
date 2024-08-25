@@ -9,3 +9,5 @@ export type ItemTemplateID = Flavour<number, "ItemTemplateID">;
 export type MobID = Flavour<number, "MobID">;
 export type MobTemplateID = Flavour<number, "MobTemplateID">;
 export type RoomID = Flavour<number, "RoomID">;
+
+export type Colour = Flavour<string, "Colour">;

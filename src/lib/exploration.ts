@@ -1,11 +1,12 @@
+import { cEditor, cError, cRoomDescription, cRoomName } from "./colours";
 import { Command } from "./CommandHandler";
 
 export const unknown: Command = {
-  name: "[unknown]",
+  name: "",
   execute(g, command?: string) {
     if (!command) return;
 
-    g.ui.text(`Unknown command: ${command}`);
+    g.ui.line(`Unknown command: ${command}`, cError);
   },
 };
 
@@ -14,10 +15,10 @@ export const look: Command = {
   execute(g) {
     const room = g.room(g.player.room);
 
-    if (g.player.tags.has("builder")) g.ui.text(`[ROOM #${room.id}]`);
+    if (g.player.tags.has("builder")) g.ui.line(`[ROOM #${room.id}]`, cEditor);
 
-    g.ui.text(room.name);
-    if (room.description) g.ui.text(room.description);
+    g.ui.line(room.name, cRoomName);
+    if (room.description) g.ui.line(room.description, cRoomDescription);
   },
 };
 
@@ -27,7 +28,7 @@ export const go: Command = {
     const room = g.room(g.player.room);
 
     const exit = room.exits.get(dir.toLocaleLowerCase());
-    if (!exit) return g.ui.text(`There's no "${dir}" exit.`);
+    if (!exit) return g.ui.line(`There's no "${dir}" exit.`, cError);
 
     if (exit.tags.has("closed")) {
       const desc = exit.desc ?? "the door";
@@ -43,7 +44,7 @@ export const go: Command = {
             const opposite = g.room(exit.room).exits.get(exit.link);
             if (opposite) opposite.tags.delete("locked");
           }
-        } else return g.ui.text("You don't have the key.");
+        } else return g.ui.line("You don't have the key.", cError);
       }
 
       exit.tags.delete("closed");

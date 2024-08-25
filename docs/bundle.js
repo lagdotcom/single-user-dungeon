@@ -14,6 +14,14 @@
     };
   }
 
+  // src/lib/colours.ts
+  var cSystem = "system";
+  var cEditor = "olc";
+  var cError = "error";
+  var cAction = "action";
+  var cRoomName = "room-name";
+  var cRoomDescription = "room-description";
+
   // src/lib/CommandHandler.ts
   function cmdSplit(s) {
     const parts = [];
@@ -53,33 +61,35 @@
         if (parts.length > 0) {
           const [first, ...rest] = parts;
           const cmd = this.commands.get(first.toLocaleLowerCase());
-          if (cmd) {
-            if (cmd.doNotParse)
-              return cmd.execute(g, value.slice(cmd.name.length + 1));
-            else return cmd.execute(g, ...rest);
-          }
+          if (cmd) return this.runCommand(g, cmd, value, rest);
         }
-        return this.unhandled.execute(g, ...parts);
+        return this.runCommand(g, this.unhandled, value, parts);
       });
       this.commands = new Map(commands.map((c) => [c.name, c]));
+    }
+    runCommand(g, cmd, value, parts) {
+      if (cmd.doNotParse) {
+        const line = cmd.name ? value.slice(cmd.name.length + 1) : value;
+        return cmd.execute(g, line);
+      } else return cmd.execute(g, ...parts);
     }
   };
 
   // src/lib/exploration.ts
   var unknown = {
-    name: "[unknown]",
+    name: "",
     execute(g, command) {
       if (!command) return;
-      g.ui.text(`Unknown command: ${command}`);
+      g.ui.line(`Unknown command: ${command}`, cError);
     }
   };
   var look = {
     name: "look",
     execute(g) {
       const room = g.room(g.player.room);
-      if (g.player.tags.has("builder")) g.ui.text(`[ROOM #${room.id}]`);
-      g.ui.text(room.name);
-      if (room.description) g.ui.text(room.description);
+      if (g.player.tags.has("builder")) g.ui.line(`[ROOM #${room.id}]`, cEditor);
+      g.ui.line(room.name, cRoomName);
+      if (room.description) g.ui.line(room.description, cRoomDescription);
     }
   };
   var go = {
@@ -88,7 +98,7 @@
       var _a;
       const room = g.room(g.player.room);
       const exit = room.exits.get(dir.toLocaleLowerCase());
-      if (!exit) return g.ui.text(`There's no "${dir}" exit.`);
+      if (!exit) return g.ui.line(`There's no "${dir}" exit.`, cError);
       if (exit.tags.has("closed")) {
         const desc = (_a = exit.desc) != null ? _a : "the door";
         if (exit.tags.has("locked") && exit.key) {
@@ -100,7 +110,7 @@
               const opposite = g.room(exit.room).exits.get(exit.link);
               if (opposite) opposite.tags.delete("locked");
             }
-          } else return g.ui.text("You don't have the key.");
+          } else return g.ui.line("You don't have the key.", cError);
         }
         exit.tags.delete("closed");
         g.act(g.player.id, `$n open$s ${desc}`);
@@ -123,11 +133,110 @@
       const player = g.player;
       if (player.tags.has("builder")) {
         player.tags.delete("builder");
-        g.ui.text("You are no longer a builder.");
+        g.ui.line("You are no longer a builder.", cSystem);
       } else {
         player.tags.add("builder");
-        g.ui.text("You are now a builder.");
+        g.ui.line("You are now a builder.", cSystem);
       }
+    }
+  };
+
+  // src/lib/numberedList.ts
+  function numberedList(items) {
+    const nl = Math.floor(Math.log10(items.length)) + 1;
+    let value = "";
+    let index = 0;
+    for (const item of items) {
+      index++;
+      let is = index.toString();
+      while (is.length < nl) is = " " + is;
+      value += `${is}. ${item}
+`;
+    }
+    return value;
+  }
+
+  // src/lib/EditorContext.ts
+  var EDITOR_HELP = `Editor Mode:
+    .h    show help
+    .s    display text so far
+    .c    clear text
+    .d #  delete line #
+    .q    quit
+
+Any other text adds to the current text.`;
+  var EditorContext = class {
+    constructor(g, value, onFinish) {
+      this.onFinish = onFinish;
+      __publicField(this, "lines");
+      g.pushInputHandler(
+        new CommandHandler(this.line, [
+          this.help,
+          this.show,
+          this.clear,
+          this.delete,
+          this.quit
+        ]).handleInput
+      );
+      g.ui.line('Entering editor mode. ".h" for help', cEditor);
+      this.lines = value ? value.split("\n") : [];
+    }
+    get line() {
+      return {
+        name: "",
+        doNotParse: true,
+        execute: (g, line) => {
+          this.lines.push(line);
+          g.ui.line("Added line to text.", cEditor);
+        }
+      };
+    }
+    get help() {
+      return {
+        name: ".h",
+        execute: (g) => {
+          g.ui.line(EDITOR_HELP);
+        }
+      };
+    }
+    get show() {
+      return {
+        name: ".s",
+        execute: (g) => {
+          if (this.lines.length) g.ui.text(numberedList(this.lines));
+          else g.ui.line("(text is currently empty)", cEditor);
+        }
+      };
+    }
+    get clear() {
+      return {
+        name: ".c",
+        execute: (g) => {
+          this.lines = [];
+          g.ui.line("OK.", cEditor);
+        }
+      };
+    }
+    get delete() {
+      return {
+        name: ".d",
+        execute: (g, arg) => {
+          const line = parseInt(arg != null ? arg : "@");
+          if (isNaN(line) || line < 1 || line > this.lines.length)
+            return g.ui.line("Invalid line number.", cError);
+          this.lines = this.lines.filter((v, i) => i !== line - 1);
+          g.ui.line("OK.", cEditor);
+        }
+      };
+    }
+    get quit() {
+      return {
+        name: ".q",
+        execute: (g) => {
+          g.popInputHandler();
+          this.onFinish(this.lines.join("\n"));
+        }
+      };
     }
   };
 
@@ -135,7 +244,7 @@
   function makeRoom(g, roomID) {
     const existing = g.world.rooms.get(roomID);
     if (existing) {
-      g.ui.text("Room id already exists.");
+      g.ui.line("Room ID already exists.", cError);
       return;
     }
     const room = {
@@ -167,7 +276,7 @@
   var doneEditing = {
     name: "done",
     execute(g) {
-      g.ui.text("Exiting editing mode.");
+      g.ui.line("Exiting editing mode.", cEditor);
       g.popInputHandler();
     }
   };
@@ -177,8 +286,9 @@
     name: "rexit",
     execute(g, dir, type, newID) {
       if (!dir)
-        return g.ui.text(
-          "Syntax: <dir> dig|link|room <id>\n        <dir> delete"
+        return g.ui.line(
+          "Syntax: <dir> dig|link|room <id>\n        <dir> delete",
+          cSystem
         );
       if (!type) return go.execute(g, dir);
       const roomID = g.player.room;
@@ -188,42 +298,42 @@
         if (type === "delete") {
           room.exits.delete(dir);
           if (exit.link) g.room(exit.room).exits.delete(exit.link);
-          return g.ui.text("OK.");
+          return g.ui.line("OK.", cEditor);
         }
-        return g.ui.text("Exit already exists.");
+        return g.ui.line("Exit already exists.", cError);
       }
       switch (type) {
         case "delete":
-          return g.ui.text("Exit does not exist.");
+          return g.ui.line("Exit does not exist.", cError);
         case "dig": {
           const otherID = parseInt(newID != null ? newID : "@");
-          if (isNaN(otherID)) return g.ui.text("Invalid room ID.");
+          if (isNaN(otherID)) return g.ui.line("Invalid room ID.", cError);
           const other = makeRoom(g, otherID);
           if (!other) return;
           makeLinkedExits(dir, room, other);
-          g.ui.text("OK.");
+          g.ui.line("OK.", cEditor);
           return g.moveMob(g.player.id, otherID);
         }
         case "link": {
           const otherID = parseInt(newID != null ? newID : "@");
-          if (isNaN(otherID)) return g.ui.text("Invalid room ID.");
+          if (isNaN(otherID)) return g.ui.line("Invalid room ID.", cError);
           const other = g.world.rooms.get(otherID);
-          if (!other) return g.ui.text("Room id does not exist.");
+          if (!other) return g.ui.line("Room ID does not exist.", cError);
           makeLinkedExits(dir, room, other);
-          g.ui.text("OK.");
+          g.ui.line("OK.", cEditor);
           return g.moveMob(g.player.id, otherID);
         }
         case "room": {
           const otherID = parseInt(newID != null ? newID : "@");
-          if (isNaN(otherID)) return g.ui.text("Invalid room ID.");
+          if (isNaN(otherID)) return g.ui.line("Invalid room ID.", cError);
           const other = g.world.rooms.get(otherID);
-          if (!other) return g.ui.text("Room id does not exist.");
+          if (!other) return g.ui.line("Room ID does not exist.", cError);
           room.exits.set(dir, { room: otherID, tags: /* @__PURE__ */ new Set() });
-          g.ui.text("OK.");
+          g.ui.line("OK.", cEditor);
           return g.moveMob(g.player.id, otherID);
         }
         default:
-          return g.ui.text(`Invalid rexit verb: ${type}`);
+          return g.ui.line(`Invalid rexit verb: ${type}`, cError);
       }
     }
   };
@@ -232,19 +342,36 @@
     doNotParse: true,
     execute(g, ...args) {
       const name = args.join(" ").trim();
-      if (!name) return g.ui.text("Syntax: name <new room name>");
+      if (!name) return g.ui.line("Syntax: name <new room name>", cError);
       const room = g.room(g.player.room);
       room.name = name;
       return look.execute(g);
+    }
+  };
+  var describeRoom = {
+    name: "describe",
+    execute(g) {
+      var _a;
+      const room = g.room(g.player.room);
+      new EditorContext(g, (_a = room.description) != null ? _a : "", (value) => {
+        if (value) {
+          room.description = value;
+          g.ui.line("Description set.", cEditor);
+        } else {
+          delete room.description;
+          g.ui.line("Description cleared.", cEditor);
+        }
+        return look.execute(g);
+      });
     }
   };
   var create = {
     name: "create",
     execute(g, id) {
       const roomID = parseInt(id != null ? id : "@");
-      if (isNaN(roomID)) return g.ui.text("Invalid room id.");
+      if (isNaN(roomID)) return g.ui.line("Invalid room ID.", cError);
       if (!makeRoom(g, roomID)) return;
-      g.ui.text("OK.");
+      g.ui.line("OK.", cEditor);
       return g.moveMob(g.player.id, roomID);
     }
   };
@@ -260,25 +387,26 @@
     alias("south", makeRoomExit.name, "south"),
     alias("w", makeRoomExit.name, "west"),
     alias("west", makeRoomExit.name, "west"),
-    nameRoom
+    nameRoom,
+    describeRoom
   ]);
   var roomEditor = {
     name: "redit",
     execute(g, arg, id) {
       if (!g.player.tags.has("builder"))
-        return g.ui.text("You are not a builder.");
+        return g.ui.line("You are not a builder.", cError);
       let roomID = NaN;
       if (id) {
         roomID = parseInt(id);
-        if (isNaN(roomID)) return g.ui.text("Invalid room id.");
+        if (isNaN(roomID)) return g.ui.line("Invalid room ID.", cError);
         if (arg === "create") {
           if (!makeRoom(g, roomID)) return;
         } else if (arg === "edit") {
           const existing = g.world.rooms.get(roomID);
-          if (!existing) return g.ui.text("Room id does not exist.");
-        } else return g.ui.text(`Unknown redit verb: ${arg}`);
+          if (!existing) return g.ui.line("Room ID does not exist.", cError);
+        } else return g.ui.line(`Unknown redit verb: ${arg}`, cError);
       } else roomID = g.player.room;
-      g.ui.text(`Entering room edit mode - room #${roomID}.`);
+      g.ui.line(`Entering room edit mode - room #${roomID}.`, cEditor);
       g.moveMob(g.player.id, roomID);
       g.pushInputHandler(roomEditMode.handleInput);
     }
@@ -369,7 +497,7 @@ Type your name:`;
       mob.room = roomID;
       look.execute(this);
     }
-    act(selfID, message, overrideRoomID) {
+    act(selfID, message, overrideRoomID, colour = cAction) {
       var _a, _b;
       const [self, st] = this.mobAndTemplate(selfID);
       const roomID = overrideRoomID != null ? overrideRoomID : self.room;
@@ -383,7 +511,7 @@ Type your name:`;
         const t = (_b = mob.name) != null ? _b : mt.short;
         const e = isSelf ? "" : "es";
         const formatted = this.format(message, { n, s, t, e });
-        if (mob.tags.has("player")) this.ui.text(formatted);
+        if (mob.tags.has("player")) this.ui.line(formatted, colour);
       }
     }
     format(message, replacements) {
@@ -397,15 +525,19 @@ Type your name:`;
       return message;
     }
     motd() {
-      this.ui.text(MOTDBanner);
+      this.ui.line(MOTDBanner, cSystem);
       return (value) => {
         const { player, startingRoomID, ui, world } = this;
         if (value.length < 2) {
-          ui.text("Try something longer.");
+          ui.line("Try something longer.", cError);
           return;
         }
         player.name = value.trim();
-        ui.text(`Good to meet you, ${player.name}.`);
+        ui.line(
+          `Good to meet you, ${player.name}. You are now entering SUD... enjoy your stay!
+`,
+          cSystem
+        );
         world.mobs.set(player.id, player);
         this.popInputHandler();
         this.pushInputHandler(mainCommandHandler.handleInput);
@@ -455,12 +587,18 @@ Type your name:`;
       if (input.tagName !== "INPUT") throw new Error("#input is not an input");
       return new _UI(display, input);
     }
-    text(s) {
-      this.element.innerText += s + "\n";
+    text(s, colour) {
+      const span = document.createElement("span");
+      span.innerText = s;
+      if (colour) span.style.color = `var(--${colour})`;
+      this.element.appendChild(span);
     }
-    textBlock(s) {
+    line(s, colour) {
+      return this.text(s + "\n", colour);
+    }
+    textBlock(s, colour) {
       this.beginOutput();
-      this.text(s);
+      this.line(s, colour);
       this.endOutput();
     }
     onInputLine() {
@@ -480,6 +618,10 @@ Type your name:`;
       this.display.appendChild(this.element);
     }
     endOutput() {
+      if (!this.element.children.length) {
+        this.display.removeChild(this.element);
+        return;
+      }
       if (!this.scrolling)
         this.scrolling = setTimeout(() => {
           this.display.scrollTop = this.display.scrollHeight;

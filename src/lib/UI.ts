@@ -1,3 +1,5 @@
+import { Colour } from "../types/flavours";
+
 export type InputListener = (input: string) => void;
 
 export default class UI {
@@ -29,13 +31,21 @@ export default class UI {
     return new UI(display, input as HTMLInputElement);
   }
 
-  text(s: string) {
-    this.element.innerText += s + "\n";
+  text(s: string, colour?: Colour) {
+    const span = document.createElement("span");
+    span.innerText = s;
+    if (colour) span.style.color = `var(--${colour})`;
+
+    this.element.appendChild(span);
   }
 
-  textBlock(s: string) {
+  line(s: string, colour?: Colour) {
+    return this.text(s + "\n", colour);
+  }
+
+  textBlock(s: string, colour?: Colour) {
     this.beginOutput();
-    this.text(s);
+    this.line(s, colour);
     this.endOutput();
   }
 
@@ -61,6 +71,11 @@ export default class UI {
   }
 
   endOutput() {
+    if (!this.element.children.length) {
+      this.display.removeChild(this.element);
+      return;
+    }
+
     if (!this.scrolling)
       this.scrolling = setTimeout(() => {
         this.display.scrollTop = this.display.scrollHeight;
