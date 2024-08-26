@@ -16,6 +16,7 @@ const makeRoomExit: Command = {
       );
     if (!type) return go.execute(g, dir);
 
+    if (!g.player.room) return g.ui.line("You are not anywhere.", cError);
     const roomID = g.player.room;
     const room = g.room(roomID);
     const exit = room.exits.get(dir);
@@ -24,6 +25,7 @@ const makeRoomExit: Command = {
         room.exits.delete(dir);
         if (exit.link) g.room(exit.room).exits.delete(exit.link);
 
+        g.saveWorld();
         return g.ui.line("OK.", cEditor);
       }
 
@@ -35,40 +37,40 @@ const makeRoomExit: Command = {
         return g.ui.line("Exit does not exist.", cError);
 
       case "dig": {
-        const otherID = parseInt(newID ?? "@");
-        if (isNaN(otherID)) return g.ui.line("Invalid room ID.", cError);
+        if (!newID) return g.ui.line("Invalid room ID.", cError);
 
-        const other = makeRoom(g, otherID);
+        const other = makeRoom(g, newID);
         if (!other) return;
 
         makeLinkedExits(dir, room, other);
+        g.saveWorld();
         g.ui.line("OK.", cEditor);
-        return g.moveMob(g.player.id, otherID);
+        return g.moveMob(g.player.id, newID);
       }
 
       case "link": {
-        const otherID = parseInt(newID ?? "@");
-        if (isNaN(otherID)) return g.ui.line("Invalid room ID.", cError);
+        if (!newID) return g.ui.line("Invalid room ID.", cError);
 
-        const other = g.world.rooms.get(otherID);
+        const other = g.world.rooms.get(newID);
         if (!other) return g.ui.line("Room ID does not exist.", cError);
 
         makeLinkedExits(dir, room, other);
+        g.saveWorld();
         g.ui.line("OK.", cEditor);
-        return g.moveMob(g.player.id, otherID);
+        return g.moveMob(g.player.id, newID);
       }
 
       case "room": {
-        const otherID = parseInt(newID ?? "@");
-        if (isNaN(otherID)) return g.ui.line("Invalid room ID.", cError);
+        if (!newID) return g.ui.line("Invalid room ID.", cError);
 
-        const other = g.world.rooms.get(otherID);
+        const other = g.world.rooms.get(newID);
         if (!other) return g.ui.line("Room ID does not exist.", cError);
 
-        room.exits.set(dir, { room: otherID, tags: new Set() });
+        room.exits.set(dir, { room: newID, tags: new Set() });
 
+        g.saveWorld();
         g.ui.line("OK.", cEditor);
-        return g.moveMob(g.player.id, otherID);
+        return g.moveMob(g.player.id, newID);
       }
 
       default:
@@ -84,8 +86,11 @@ const nameRoom: Command = {
     const name = args.join(" ").trim();
     if (!name) return g.ui.line("Syntax: name <new room name>", cError);
 
+    if (!g.player.room) return g.ui.line("You are not anywhere.", cError);
     const room = g.room(g.player.room);
     room.name = name;
+
+    g.saveWorld();
     return look.execute(g);
   },
 };
@@ -93,6 +98,7 @@ const nameRoom: Command = {
 const describeRoom: Command = {
   name: "describe",
   execute(g) {
+    if (!g.player.room) return g.ui.line("You are not anywhere.", cError);
     const room = g.room(g.player.room);
     new EditorContext(g, room.description ?? "", (value) => {
       if (value) {
@@ -103,6 +109,7 @@ const describeRoom: Command = {
         g.ui.line("Description cleared.", cEditor);
       }
 
+      g.saveWorld();
       return look.execute(g);
     });
   },
@@ -111,13 +118,12 @@ const describeRoom: Command = {
 const create: Command = {
   name: "create",
   execute(g, id?: string) {
-    const roomID = parseInt(id ?? "@");
-    if (isNaN(roomID)) return g.ui.line("Invalid room ID.", cError);
+    if (!id) return g.ui.line("Invalid room ID.", cError);
 
-    if (!makeRoom(g, roomID)) return;
+    if (!makeRoom(g, id)) return;
 
     g.ui.line("OK.", cEditor);
-    return g.moveMob(g.player.id, roomID);
+    return g.moveMob(g.player.id, id);
   },
 };
 
@@ -146,11 +152,11 @@ export const roomEditor: Command = {
     if (!g.player.tags.has("builder"))
       return g.ui.line("You are not a builder.", cError);
 
-    let roomID: RoomID = NaN;
+    let roomID: RoomID | undefined;
 
     if (id) {
-      roomID = parseInt(id);
-      if (isNaN(roomID)) return g.ui.line("Invalid room ID.", cError);
+      roomID = id;
+      if (!id) return g.ui.line("Invalid room ID.", cError);
 
       if (arg === "create") {
         if (!makeRoom(g, roomID)) return;
@@ -160,7 +166,10 @@ export const roomEditor: Command = {
       } else return g.ui.line(`Unknown redit verb: ${arg}`, cError);
     } else roomID = g.player.room;
 
-    g.ui.line(`Entering room edit mode - room #${roomID}.`, cEditor);
+    if (!roomID)
+      return g.ui.line(`No room ID given and not in a room.`, cError);
+
+    g.ui.line(`Entering room edit mode.`, cEditor);
     g.moveMob(g.player.id, roomID);
     g.pushInputHandler(roomEditMode.handleInput);
   },

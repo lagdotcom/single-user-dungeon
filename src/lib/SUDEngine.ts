@@ -15,10 +15,27 @@ import World from "../types/World";
 import alias from "./alias";
 import { cAction, cError, cSystem } from "./colours";
 import CommandHandler from "./CommandHandler";
-import { go, look, unknown } from "./exploration";
+import { go, look, save, unknown } from "./exploration";
 import { toggleBuilder } from "./olc/common";
 import { roomEditor } from "./olc/room";
+import {
+  deserializeFromStorage,
+  getSaveKey,
+  serializeToStorage,
+  WorldKey,
+} from "./serialization";
 import UI from "./UI";
+
+export interface WorldSave {
+  world: World;
+  pcTemplateID: MobTemplateID;
+  startingRoomID: RoomID;
+}
+
+export interface PlayerSave {
+  room?: RoomID;
+  tags: Mob["tags"];
+}
 
 export type InputHandler = (input: string, e: Engine) => void;
 
@@ -45,12 +62,11 @@ export default class SUDEngine implements Engine {
     });
 
     this.player = {
-      id: 1,
+      id: "player",
       template: playerTemplateID,
       equipment: new Map(),
       inventory: new Set(),
       tags: new Set(["player"]),
-      room: NaN,
     };
 
     this.inputStack = [this.motd()];
@@ -121,9 +137,9 @@ export default class SUDEngine implements Engine {
   ) {
     const mob = this.mob(mobID);
 
-    const oldRoom = this.world.rooms.get(mob.room);
+    const oldRoom = mob.room && this.world.rooms.get(mob.room);
     if (oldRoom) {
-      mob.room = NaN;
+      delete mob.room;
       oldRoom.mobs.delete(mobID);
       if (leaveMessage) this.act(mobID, leaveMessage);
     }
@@ -180,36 +196,72 @@ export default class SUDEngine implements Engine {
     this.ui.line(MOTDBanner, cSystem);
 
     return (value: string) => {
-      const { player, startingRoomID, ui, world } = this;
+      const { player, ui } = this;
 
-      if (value.length < 2) {
+      player.name = value.trim();
+      if (player.name.length < 2) {
         ui.line("Try something longer.", cError);
         return;
       }
 
-      player.name = value.trim();
-      ui.line(
-        `Good to meet you, ${player.name}. You are now entering SUD... enjoy your stay!\n`,
-        cSystem,
-      );
-
-      world.mobs.set(player.id, player);
-
       this.popInputHandler();
       this.pushInputHandler(mainCommandHandler.handleInput);
 
-      this.moveMob(player.id, startingRoomID, "$n log$s in");
+      this.loadPlayer(player.name);
     };
+  }
+
+  loadPlayer(name: string) {
+    const key = getSaveKey(name);
+    const save = deserializeFromStorage<PlayerSave>(key);
+    const roomID: RoomID | undefined = save?.room ?? this.startingRoomID;
+
+    const greeting = save ? "Welcome back" : "Good to meet you";
+
+    this.player.id = `player-${name}`;
+    this.player.room = roomID;
+    if (save) this.player.tags = save.tags;
+
+    this.ui.line(
+      `${greeting}, ${name}. You are now entering SUD... enjoy your stay!\n`,
+    );
+
+    this.world.mobs.set(this.player.id, this.player);
+    if (roomID) this.moveMob(this.player.id, roomID, `$n log$s in`);
   }
 
   interpret(...args: string[]): void {
     this.inputHandler(args.join(" "), this);
+  }
+
+  savePlayer(): void {
+    const key = getSaveKey(this.player.name ?? "@");
+    serializeToStorage<PlayerSave>(key, {
+      room: this.player.room,
+      tags: this.player.tags,
+    });
+  }
+
+  saveWorld(): void {
+    // temporarily remove player from room
+    const roomID = this.player.room;
+    if (roomID) this.room(roomID).mobs.delete(this.player.id);
+
+    serializeToStorage<WorldSave>(WorldKey, {
+      world: this.world,
+      pcTemplateID: this.playerTemplateID,
+      startingRoomID: this.startingRoomID,
+    });
+
+    if (roomID) this.room(roomID).mobs.add(this.player.id);
   }
 }
 
 const mainCommandHandler = new CommandHandler(unknown, [
   toggleBuilder,
   roomEditor,
+
+  save,
 
   look,
   alias("l", look.name),

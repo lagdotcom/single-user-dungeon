@@ -41,4 +41,7 @@ export default interface Engine {
     arriveMessage?: string,
     leaveMessage?: string,
   ): void;
+
+  savePlayer(): void;
+  saveWorld(): void;
 }

@@ -8,3 +8,4 @@ export const cError: Colour = "error";
 export const cAction: Colour = "action";
 export const cRoomName: Colour = "room-name";
 export const cRoomDescription: Colour = "room-description";
+export const cRoomMobs: Colour = "room-mobs";

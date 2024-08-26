@@ -3,7 +3,7 @@ import MobTag from "./MobTag";
 
 export default interface Mob {
   id: MobID;
-  room: RoomID;
+  room?: RoomID;
   template: MobTemplateID;
   equipment: Map<string, ItemID>;
   inventory: Set<ItemID>;

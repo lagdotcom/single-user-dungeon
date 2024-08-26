@@ -1,23 +1,20 @@
-import SUDEngine from "./lib/SUDEngine";
+import { deserializeFromStorage, WorldKey } from "./lib/serialization";
+import SUDEngine, { WorldSave } from "./lib/SUDEngine";
 import UI from "./lib/UI";
 import MobTemplate from "./types/MobTemplate";
 import Room from "./types/Room";
 import World from "./types/World";
 
-function main() {
-  const ui = UI.find();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (window as any).ui = ui;
-
+function getDefaultWorld(): WorldSave {
   const pcTemplate: MobTemplate = {
-    id: 1,
+    id: ":player",
     name: "player",
     short: "a player",
     slots: new Set(),
   };
 
   const voidRoom: Room = {
-    id: 1,
+    id: "void:room",
     name: "The Void",
     description: "All around you is a shapeless void.",
     exits: new Map(),
@@ -33,7 +30,18 @@ function main() {
     rooms: new Map([[voidRoom.id, voidRoom]]),
   };
 
-  const g = new SUDEngine(world, ui, pcTemplate.id, voidRoom.id);
+  return { world, pcTemplateID: pcTemplate.id, startingRoomID: voidRoom.id };
+}
+
+function main() {
+  const ui = UI.find();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).ui = ui;
+
+  const { world, pcTemplateID, startingRoomID } =
+    deserializeFromStorage<WorldSave>(WorldKey) ?? getDefaultWorld();
+
+  const g = new SUDEngine(world, ui, pcTemplateID, startingRoomID);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).g = g;
 }

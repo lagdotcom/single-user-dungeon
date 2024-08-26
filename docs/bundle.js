@@ -4,6 +4,40 @@
   var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
   var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 
+  // src/lib/serialization.ts
+  var WorldKey = "sud-world";
+  var getSaveKey = (name) => `sud-save-${name}`;
+  function isSerializedSet(obj) {
+    return !!obj && typeof obj === "object" && "__" in obj && obj.__ === "set";
+  }
+  function isSerializedMap(obj) {
+    return !!obj && typeof obj === "object" && "__" in obj && obj.__ === "map";
+  }
+  function serialize(obj) {
+    if (typeof obj === "function") throw new Error("cannot serialize Function");
+    if (typeof obj !== "object") return obj;
+    if (Array.isArray(obj)) return obj.map(serialize);
+    if (obj instanceof Set)
+      return { __: "set", values: Array.from(obj, serialize) };
+    if (obj instanceof Map)
+      return { __: "map", values: Array.from(obj, serialize) };
+    return Object.fromEntries(Object.entries(obj).map(serialize));
+  }
+  function deserialize(ser) {
+    if (typeof ser !== "object") return ser;
+    if (Array.isArray(ser)) return ser.map(deserialize);
+    if (isSerializedSet(ser)) return new Set(ser.values.map(deserialize));
+    if (isSerializedMap(ser)) return new Map(ser.values.map(deserialize));
+    return Object.fromEntries(Object.entries(ser).map(deserialize));
+  }
+  function deserializeFromStorage(key) {
+    const item = localStorage.getItem(key);
+    if (item !== null) return deserialize(JSON.parse(item));
+  }
+  function serializeToStorage(key, value) {
+    localStorage.setItem(key, JSON.stringify(serialize(value)));
+  }
+
   // src/lib/alias.ts
   function alias(name, ...rewrite) {
     return {
@@ -21,6 +55,7 @@
   var cAction = "action";
   var cRoomName = "room-name";
   var cRoomDescription = "room-description";
+  var cRoomMobs = "room-mobs";
 
   // src/lib/CommandHandler.ts
   function cmdSplit(s) {
@@ -86,16 +121,23 @@
   var look = {
     name: "look",
     execute(g) {
+      if (!g.player.room) return g.ui.line("You are not anywhere.", cError);
       const room = g.room(g.player.room);
-      if (g.player.tags.has("builder")) g.ui.line(`[ROOM #${room.id}]`, cEditor);
+      if (g.player.tags.has("builder")) g.ui.line(`[${room.id}]`, cEditor);
       g.ui.line(room.name, cRoomName);
       if (room.description) g.ui.line(room.description, cRoomDescription);
+      for (const mobID of room.mobs) {
+        if (mobID === g.player.id) continue;
+        const [, mt] = g.mobAndTemplate(mobID);
+        g.ui.line(mt.short, cRoomMobs);
+      }
     }
   };
   var go = {
     name: "go",
     execute(g, dir) {
       var _a;
+      if (!g.player.room) return g.ui.line("You are not anywhere.", cError);
       const room = g.room(g.player.room);
       const exit = room.exits.get(dir.toLocaleLowerCase());
       if (!exit) return g.ui.line(`There's no "${dir}" exit.`, cError);
@@ -122,7 +164,15 @@
           }
         }
       }
+      g.saveWorld();
       g.moveMob(g.player.id, exit.room, "$n arrive$s.", "$n leav$e.");
+    }
+  };
+  var save = {
+    name: "save",
+    execute(g) {
+      g.savePlayer();
+      g.ui.line("OK.", cSystem);
     }
   };
 
@@ -291,6 +341,7 @@ Any other text adds to the current text.`;
           cSystem
         );
       if (!type) return go.execute(g, dir);
+      if (!g.player.room) return g.ui.line("You are not anywhere.", cError);
       const roomID = g.player.room;
       const room = g.room(roomID);
       const exit = room.exits.get(dir);
@@ -298,6 +349,7 @@ Any other text adds to the current text.`;
         if (type === "delete") {
           room.exits.delete(dir);
           if (exit.link) g.room(exit.room).exits.delete(exit.link);
+          g.saveWorld();
           return g.ui.line("OK.", cEditor);
         }
         return g.ui.line("Exit already exists.", cError);
@@ -306,31 +358,31 @@ Any other text adds to the current text.`;
         case "delete":
           return g.ui.line("Exit does not exist.", cError);
         case "dig": {
-          const otherID = parseInt(newID != null ? newID : "@");
-          if (isNaN(otherID)) return g.ui.line("Invalid room ID.", cError);
-          const other = makeRoom(g, otherID);
+          if (!newID) return g.ui.line("Invalid room ID.", cError);
+          const other = makeRoom(g, newID);
           if (!other) return;
           makeLinkedExits(dir, room, other);
+          g.saveWorld();
           g.ui.line("OK.", cEditor);
-          return g.moveMob(g.player.id, otherID);
+          return g.moveMob(g.player.id, newID);
         }
         case "link": {
-          const otherID = parseInt(newID != null ? newID : "@");
-          if (isNaN(otherID)) return g.ui.line("Invalid room ID.", cError);
-          const other = g.world.rooms.get(otherID);
+          if (!newID) return g.ui.line("Invalid room ID.", cError);
+          const other = g.world.rooms.get(newID);
           if (!other) return g.ui.line("Room ID does not exist.", cError);
           makeLinkedExits(dir, room, other);
+          g.saveWorld();
           g.ui.line("OK.", cEditor);
-          return g.moveMob(g.player.id, otherID);
+          return g.moveMob(g.player.id, newID);
         }
         case "room": {
-          const otherID = parseInt(newID != null ? newID : "@");
-          if (isNaN(otherID)) return g.ui.line("Invalid room ID.", cError);
-          const other = g.world.rooms.get(otherID);
+          if (!newID) return g.ui.line("Invalid room ID.", cError);
+          const other = g.world.rooms.get(newID);
           if (!other) return g.ui.line("Room ID does not exist.", cError);
-          room.exits.set(dir, { room: otherID, tags: /* @__PURE__ */ new Set() });
+          room.exits.set(dir, { room: newID, tags: /* @__PURE__ */ new Set() });
+          g.saveWorld();
           g.ui.line("OK.", cEditor);
-          return g.moveMob(g.player.id, otherID);
+          return g.moveMob(g.player.id, newID);
         }
         default:
           return g.ui.line(`Invalid rexit verb: ${type}`, cError);
@@ -343,8 +395,10 @@ Any other text adds to the current text.`;
     execute(g, ...args) {
       const name = args.join(" ").trim();
       if (!name) return g.ui.line("Syntax: name <new room name>", cError);
+      if (!g.player.room) return g.ui.line("You are not anywhere.", cError);
       const room = g.room(g.player.room);
       room.name = name;
+      g.saveWorld();
       return look.execute(g);
     }
   };
@@ -352,6 +406,7 @@ Any other text adds to the current text.`;
     name: "describe",
     execute(g) {
       var _a;
+      if (!g.player.room) return g.ui.line("You are not anywhere.", cError);
       const room = g.room(g.player.room);
       new EditorContext(g, (_a = room.description) != null ? _a : "", (value) => {
         if (value) {
@@ -361,6 +416,7 @@ Any other text adds to the current text.`;
           delete room.description;
           g.ui.line("Description cleared.", cEditor);
         }
+        g.saveWorld();
         return look.execute(g);
       });
     }
@@ -368,11 +424,10 @@ Any other text adds to the current text.`;
   var create = {
     name: "create",
     execute(g, id) {
-      const roomID = parseInt(id != null ? id : "@");
-      if (isNaN(roomID)) return g.ui.line("Invalid room ID.", cError);
-      if (!makeRoom(g, roomID)) return;
+      if (!id) return g.ui.line("Invalid room ID.", cError);
+      if (!makeRoom(g, id)) return;
       g.ui.line("OK.", cEditor);
-      return g.moveMob(g.player.id, roomID);
+      return g.moveMob(g.player.id, id);
     }
   };
   var roomEditMode = new CommandHandler(unknown, [
@@ -395,10 +450,10 @@ Any other text adds to the current text.`;
     execute(g, arg, id) {
       if (!g.player.tags.has("builder"))
         return g.ui.line("You are not a builder.", cError);
-      let roomID = NaN;
+      let roomID;
       if (id) {
-        roomID = parseInt(id);
-        if (isNaN(roomID)) return g.ui.line("Invalid room ID.", cError);
+        roomID = id;
+        if (!id) return g.ui.line("Invalid room ID.", cError);
         if (arg === "create") {
           if (!makeRoom(g, roomID)) return;
         } else if (arg === "edit") {
@@ -406,7 +461,9 @@ Any other text adds to the current text.`;
           if (!existing) return g.ui.line("Room ID does not exist.", cError);
         } else return g.ui.line(`Unknown redit verb: ${arg}`, cError);
       } else roomID = g.player.room;
-      g.ui.line(`Entering room edit mode - room #${roomID}.`, cEditor);
+      if (!roomID)
+        return g.ui.line(`No room ID given and not in a room.`, cError);
+      g.ui.line(`Entering room edit mode.`, cEditor);
       g.moveMob(g.player.id, roomID);
       g.pushInputHandler(roomEditMode.handleInput);
     }
@@ -432,12 +489,11 @@ Type your name:`;
         this.ui.endOutput();
       });
       this.player = {
-        id: 1,
+        id: "player",
         template: playerTemplateID,
         equipment: /* @__PURE__ */ new Map(),
         inventory: /* @__PURE__ */ new Set(),
-        tags: /* @__PURE__ */ new Set(["player"]),
-        room: NaN
+        tags: /* @__PURE__ */ new Set(["player"])
       };
       this.inputStack = [this.motd()];
     }
@@ -485,9 +541,9 @@ Type your name:`;
     }
     moveMob(mobID, roomID, arriveMessage, leaveMessage) {
       const mob = this.mob(mobID);
-      const oldRoom = this.world.rooms.get(mob.room);
+      const oldRoom = mob.room && this.world.rooms.get(mob.room);
       if (oldRoom) {
-        mob.room = NaN;
+        delete mob.room;
         oldRoom.mobs.delete(mobID);
         if (leaveMessage) this.act(mobID, leaveMessage);
       }
@@ -527,30 +583,59 @@ Type your name:`;
     motd() {
       this.ui.line(MOTDBanner, cSystem);
       return (value) => {
-        const { player, startingRoomID, ui, world } = this;
-        if (value.length < 2) {
+        const { player, ui } = this;
+        player.name = value.trim();
+        if (player.name.length < 2) {
           ui.line("Try something longer.", cError);
           return;
         }
-        player.name = value.trim();
-        ui.line(
-          `Good to meet you, ${player.name}. You are now entering SUD... enjoy your stay!
-`,
-          cSystem
-        );
-        world.mobs.set(player.id, player);
         this.popInputHandler();
         this.pushInputHandler(mainCommandHandler.handleInput);
-        this.moveMob(player.id, startingRoomID, "$n log$s in");
+        this.loadPlayer(player.name);
       };
+    }
+    loadPlayer(name) {
+      var _a;
+      const key = getSaveKey(name);
+      const save2 = deserializeFromStorage(key);
+      const roomID = (_a = save2 == null ? void 0 : save2.room) != null ? _a : this.startingRoomID;
+      const greeting = save2 ? "Welcome back" : "Good to meet you";
+      this.player.id = `player-${name}`;
+      this.player.room = roomID;
+      if (save2) this.player.tags = save2.tags;
+      this.ui.line(
+        `${greeting}, ${name}. You are now entering SUD... enjoy your stay!
+`
+      );
+      this.world.mobs.set(this.player.id, this.player);
+      if (roomID) this.moveMob(this.player.id, roomID, `$n log$s in`);
     }
     interpret(...args) {
       this.inputHandler(args.join(" "), this);
+    }
+    savePlayer() {
+      var _a;
+      const key = getSaveKey((_a = this.player.name) != null ? _a : "@");
+      serializeToStorage(key, {
+        room: this.player.room,
+        tags: this.player.tags
+      });
+    }
+    saveWorld() {
+      const roomID = this.player.room;
+      if (roomID) this.room(roomID).mobs.delete(this.player.id);
+      serializeToStorage(WorldKey, {
+        world: this.world,
+        pcTemplateID: this.playerTemplateID,
+        startingRoomID: this.startingRoomID
+      });
+      if (roomID) this.room(roomID).mobs.add(this.player.id);
     }
   };
   var mainCommandHandler = new CommandHandler(unknown, [
     toggleBuilder,
     roomEditor,
+    save,
     look,
     alias("l", look.name),
     go,
@@ -631,17 +716,15 @@ Type your name:`;
   };
 
   // src/main.ts
-  function main() {
-    const ui = UI.find();
-    window.ui = ui;
+  function getDefaultWorld() {
     const pcTemplate = {
-      id: 1,
+      id: ":player",
       name: "player",
       short: "a player",
       slots: /* @__PURE__ */ new Set()
     };
     const voidRoom = {
-      id: 1,
+      id: "void:room",
       name: "The Void",
       description: "All around you is a shapeless void.",
       exits: /* @__PURE__ */ new Map(),
@@ -655,7 +738,14 @@ Type your name:`;
       mobs: /* @__PURE__ */ new Map(),
       rooms: /* @__PURE__ */ new Map([[voidRoom.id, voidRoom]])
     };
-    const g = new SUDEngine(world, ui, pcTemplate.id, voidRoom.id);
+    return { world, pcTemplateID: pcTemplate.id, startingRoomID: voidRoom.id };
+  }
+  function main() {
+    var _a;
+    const ui = UI.find();
+    window.ui = ui;
+    const { world, pcTemplateID, startingRoomID } = (_a = deserializeFromStorage(WorldKey)) != null ? _a : getDefaultWorld();
+    const g = new SUDEngine(world, ui, pcTemplateID, startingRoomID);
     window.g = g;
   }
   window.addEventListener("load", main);

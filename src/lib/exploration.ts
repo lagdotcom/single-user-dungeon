@@ -1,4 +1,11 @@
-import { cEditor, cError, cRoomDescription, cRoomName } from "./colours";
+import {
+  cEditor,
+  cError,
+  cRoomDescription,
+  cRoomMobs,
+  cRoomName,
+  cSystem,
+} from "./colours";
 import { Command } from "./CommandHandler";
 
 export const unknown: Command = {
@@ -13,18 +20,27 @@ export const unknown: Command = {
 export const look: Command = {
   name: "look",
   execute(g) {
+    if (!g.player.room) return g.ui.line("You are not anywhere.", cError);
     const room = g.room(g.player.room);
 
-    if (g.player.tags.has("builder")) g.ui.line(`[ROOM #${room.id}]`, cEditor);
+    if (g.player.tags.has("builder")) g.ui.line(`[${room.id}]`, cEditor);
 
     g.ui.line(room.name, cRoomName);
     if (room.description) g.ui.line(room.description, cRoomDescription);
+
+    for (const mobID of room.mobs) {
+      if (mobID === g.player.id) continue;
+
+      const [, mt] = g.mobAndTemplate(mobID);
+      g.ui.line(mt.short, cRoomMobs);
+    }
   },
 };
 
 export const go: Command = {
   name: "go",
   execute(g, dir: string) {
+    if (!g.player.room) return g.ui.line("You are not anywhere.", cError);
     const room = g.room(g.player.room);
 
     const exit = room.exits.get(dir.toLocaleLowerCase());
@@ -59,8 +75,17 @@ export const go: Command = {
       }
     }
 
+    g.saveWorld();
     g.moveMob(g.player.id, exit.room, "$n arrive$s.", "$n leav$e.");
 
     // TODO autoclose door behind?
+  },
+};
+
+export const save: Command = {
+  name: "save",
+  execute(g) {
+    g.savePlayer();
+    g.ui.line("OK.", cSystem);
   },
 };
